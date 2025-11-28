@@ -19,48 +19,63 @@ st.set_page_config(
 )
 warnings.filterwarnings("ignore")
 
-# Custom CSS for professional styling
-st.markdown("""
+# --- 2. THEME MANAGEMENT ---
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = False
+
+def toggle_theme():
+    st.session_state.dark_mode = not st.session_state.dark_mode
+
+if st.session_state.dark_mode:
+    main_bg = "#0E1117"
+    text_color = "#FAFAFA"
+    card_bg = "#262730"
+    card_border = "#41444C"
+    safe_bg = "#0F3818"
+    safe_text = "#7DDA93"
+    danger_bg = "#3D0F12"
+    danger_text = "#FF8A8A"
+    warning_bg = "#332b00"
+    warning_text = "#ffeeba"
+else:
+    main_bg = "#FFFFFF"
+    text_color = "#2c3e50"
+    card_bg = "#FFFFFF"
+    card_border = "#E0E0E0"
+    safe_bg = "#d4edda"
+    safe_text = "#155724"
+    danger_bg = "#f8d7da"
+    danger_text = "#721c24"
+    warning_bg = "#fff3cd"
+    warning_text = "#856404"
+
+st.markdown(f"""
     <style>
-    .stApp { background-color: #ffffff; }
-    .result-card {
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin: 20px 0;
-    }
-    .safe {
-        background-color: #d4edda; color: #155724; border: 2px solid #c3e6cb;
-    }
-    .danger {
-        background-color: #f8d7da; color: #721c24; border: 2px solid #f5c6cb;
-    }
-    .warning {
-        background-color: #fff3cd; color: #856404; border: 2px solid #ffeeba;
-    }
+    .stApp {{ background-color: {main_bg}; color: {text_color}; }}
+    [data-testid="stSidebar"] {{ background-color: {card_bg}; }}
+    .main-header {{ font-size: 2.5rem; font-weight: 700; color: {text_color}; text-align: center; }}
+    .result-card {{ padding: 20px; border-radius: 10px; text-align: center; margin-top: 20px; background-color: {card_bg}; border: 1px solid {card_border}; }}
+    p, h1, h2, h3, label, .stMarkdown {{ color: {text_color} !important; }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOAD MODELS (Smart Loader) ---
+# --- 3. LOAD MODELS ---
 @st.cache_resource
 def load_models():
-    # Try loading the Lite model first (for Cloud/GitHub)
+    # Main Model
     if os.path.exists('mushroom_model_lite.keras'):
         main_model = keras.models.load_model('mushroom_model_lite.keras')
-    # Fallback to the big model (for Local)
     elif os.path.exists('best_mushroom_model.keras'):
         main_model = keras.models.load_model('best_mushroom_model.keras')
     else:
-        raise FileNotFoundError("No model file found! Please upload 'mushroom_model_lite.keras'.")
+        return None, None
     
-    # Load Gatekeeper (MobileNetV2) for mushroom detection
+    # Gatekeeper (Mushroom Detector)
     gatekeeper = MobileNetV2(weights='imagenet')
     return main_model, gatekeeper
 
-# --- 3. HELPER FUNCTIONS ---
+# --- 4. HELPER FUNCTIONS ---
 def is_mushroom(img, gatekeeper_model):
-    # Resize for MobileNetV2
     img_resized = img.resize((224, 224))
     img_array = keras.utils.img_to_array(img_resized)
     img_array = np.expand_dims(img_array, axis=0)
@@ -69,13 +84,10 @@ def is_mushroom(img, gatekeeper_model):
     preds = gatekeeper_model.predict(img_array)
     decoded = decode_predictions(preds, top=5)[0]
     
-    # Keywords to check against
-    mushroom_keywords = ['mushroom', 'fungus', 'agaric', 'gyromitra', 'bolete', 'stinkhorn', 'earthstar', 'hen-of-the-woods']
-    
+    keywords = ['mushroom', 'fungus', 'agaric', 'gyromitra', 'bolete', 'stinkhorn', 'earthstar', 'hen-of-the-woods']
     for _, label, _ in decoded:
-        for keyword in mushroom_keywords:
-            if keyword in label.lower():
-                return True
+        for k in keywords:
+            if k in label.lower(): return True
     return False
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name):
@@ -100,49 +112,52 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name):
     heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
     return heatmap.numpy()
 
-# --- 4. SIDEBAR ---
+# --- 5. SIDEBAR ---
 with st.sidebar:
-    # Logo Logic
-    if os.path.exists("logo.jpg"):
-        st.image("logo.jpg", use_container_width=True)
-    elif os.path.exists("logo.png"):
-        st.image("logo.png", use_container_width=True)
-    else:
-        st.header("🍄")
+    if os.path.exists("logo.jpg"): st.image("logo.jpg", use_container_width=True)
+    elif os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
+    else: st.header("🍄")
     
-    st.title("Forager Vision")
-    st.info("AI-Powered Mushroom Safety Tool\n\nDataset: 12,000+ Images\nModel: DenseNet121")
+    st.header("Forager Vision")
+    st.markdown("---")
+    st.write("Display Settings")
+    st.toggle("🌙 Dark Mode", value=st.session_state.dark_mode, on_change=toggle_theme)
+    st.markdown("---")
+    st.info("**System Status:** Online\n\nModel: DenseNet121\nChecks: Toxicity & Species Verification")
 
-# --- 5. MAIN INTERFACE ---
-st.markdown("<h1 style='text-align: center; color: #2c3e50;'>Mushroom Safety Analyzer</h1>", unsafe_allow_html=True)
-st.write("Upload a photo to detect toxicity.")
+# --- 6. MAIN INTERFACE ---
+st.markdown('<div class="main-header">Mushroom Safety Analyzer</div>', unsafe_allow_html=True)
+st.write("Upload a clear photo of a mushroom to detect potential toxicity.")
 
 try:
     main_model, gatekeeper = load_models()
+    if main_model is None:
+        st.error("🚨 Model file not found.")
+        st.stop()
 except Exception as e:
-    st.error(f"🚨 Error: {e}")
+    st.error(f"Error loading models: {e}")
     st.stop()
 
 uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    col1, col2 = st.columns([1, 1], gap="medium")
+    col1, col2 = st.columns([1, 1], gap="large")
     image_pil = Image.open(uploaded_file)
     
     with col1:
-        st.subheader("📷 Specimen")
-        st.image(image_pil, use_container_width=True, caption="Uploaded Image")
+        st.subheader("📸 Specimen")
+        st.image(image_pil, use_container_width=True, caption="Original Image")
 
     with col2:
         st.subheader("🧬 Analysis")
-        with st.spinner('Scanning...'):
+        with st.spinner('Scanning bio-markers...'):
             
             # STEP 1: GATEKEEPER CHECK
             if not is_mushroom(image_pil, gatekeeper):
                 st.markdown(f"""
-                    <div class="result-card warning">
-                        <h2 style="color: #856404; margin:0;">⚠️ Not Recognized</h2>
-                        <p>This does not appear to be a mushroom.</p>
+                    <div class="result-card" style="background-color: {warning_bg}; border: 2px solid {warning_text};">
+                        <h2 style="color: {warning_text}; margin:0;">⚠️ Not Recognized</h2>
+                        <p style="color: {warning_text};">This does not appear to be a mushroom.</p>
                     </div>
                 """, unsafe_allow_html=True)
                 if not st.checkbox("I confirm this is a mushroom"):
@@ -160,50 +175,53 @@ if uploaded_file is not None:
             if score > 0.5:
                 label = "POISONOUS"
                 confidence = score * 100
-                css_class = "danger"
+                dyn_bg = danger_bg
+                dyn_text = danger_text
                 icon = "☣️"
             else:
                 label = "EDIBLE"
                 confidence = (1 - score) * 100
-                css_class = "safe"
+                dyn_bg = safe_bg
+                dyn_text = safe_text
                 icon = "🥗"
 
             st.markdown(f"""
-                <div class="result-card {css_class}">
-                    <h1 style="margin:0;">{icon} {label}</h1>
-                    <h3 style="margin:10px 0 0 0;">Confidence: {confidence:.2f}%</h3>
+                <div class="result-card" style="background-color: {dyn_bg}; border: 2px solid {dyn_text};">
+                    <h1 style="margin:0; color: {dyn_text};">{icon} {label}</h1>
+                    <h3 style="margin:10px 0 0 0; color: {dyn_text};">Confidence: {confidence:.2f}%</h3>
                 </div>
             """, unsafe_allow_html=True)
             
             st.progress(int(confidence))
 
-    # --- 6. XAI HEATMAP ---
+    # --- 7. XAI SECTION ---
     st.divider()
-    with st.expander("🔬 View Explainable AI (Heatmap)"):
-        try:
-            last_conv_layer_name = ""
-            for layer in main_model.layers[::-1]:
-                if "conv" in layer.name:
-                    last_conv_layer_name = layer.name
-                    break
+    st.subheader("🔬 Visual Evidence (Grad-CAM)")
+    
+    try:
+        last_conv_layer_name = ""
+        for layer in main_model.layers[::-1]:
+            if "conv" in layer.name:
+                last_conv_layer_name = layer.name
+                break
+        
+        heatmap = make_gradcam_heatmap(img_array, main_model, last_conv_layer_name)
+        
+        heatmap = np.uint8(255 * heatmap)
+        jet = cm.get_cmap("jet")
+        jet_colors = jet(np.arange(256))[:, :3]
+        jet_heatmap = jet_colors[heatmap]
+        
+        jet_heatmap = keras.utils.array_to_img(jet_heatmap)
+        jet_heatmap = jet_heatmap.resize((img_resized.width, img_resized.height))
+        jet_heatmap = keras.utils.img_to_array(jet_heatmap)
+        
+        superimposed_img = jet_heatmap * 0.4 + keras.utils.img_to_array(img_resized)
+        superimposed_img = keras.utils.array_to_img(superimposed_img)
+        
+        xc1, xc2 = st.columns(2)
+        with xc1: st.image(img_resized, caption="Original", use_container_width=True)
+        with xc2: st.image(superimposed_img, caption="AI Attention Heatmap", use_container_width=True)
             
-            heatmap = make_gradcam_heatmap(img_array, main_model, last_conv_layer_name)
-            
-            heatmap = np.uint8(255 * heatmap)
-            jet = cm.get_cmap("jet")
-            jet_colors = jet(np.arange(256))[:, :3]
-            jet_heatmap = jet_colors[heatmap]
-            
-            jet_heatmap = keras.utils.array_to_img(jet_heatmap)
-            jet_heatmap = jet_heatmap.resize((img_resized.width, img_resized.height))
-            jet_heatmap = keras.utils.img_to_array(jet_heatmap)
-            
-            superimposed_img = jet_heatmap * 0.4 + keras.utils.img_to_array(img_resized)
-            superimposed_img = keras.utils.array_to_img(superimposed_img)
-            
-            xc1, xc2 = st.columns(2)
-            with xc1: st.image(img_resized, caption="Original", use_container_width=True)
-            with xc2: st.image(superimposed_img, caption="AI Attention Heatmap", use_container_width=True)
-                
-        except:
-            st.warning("Heatmap unavailable.")
+    except:
+        st.warning("Heatmap unavailable.")
